@@ -4,6 +4,11 @@ import time
 import pymclevel
 import numpy as np
 from scipy import ndimage
+import matplotlib.pyplot as plt
+
+
+SEA_LEVEL = 62 # FIXME: Read sea level from map instead?
+
 
 inputs = (
 	("Settlement generator", "label"),
@@ -34,46 +39,68 @@ stopwatch.time = 0
 def perform(level, box, options):
     print("Leifsbudir filter started.")
 
+#print(level.materials.blockWithID(9)) TODO: remove
+
     np.set_printoptions(precision=3)
 
-    print("Generating height map...")
+    # Initiate stopwatch
     stopwatch()
-    heightMap = terrainHeightMap(level, box)
-    print("...done, after %0.3f seconds." % stopwatch())
-#    print(heightMap)
 
-    print("Applying Sobel operator...")
+    print("Generate height map...")
+    heightMap = generateTerrainHeightMap(level, box)
+    print("...done, after %0.3f seconds." % stopwatch())
+    plt.imshow(heightMap)
+    plt.show()
+    stopwatch()
+
+    print("Apply Sobel operator...")
     sobelX = ndimage.sobel(heightMap, 1)
-#    print(sobelX)
     sobelZ = ndimage.sobel(heightMap, 0)
-#    print(sobelZ)
     sobel = np.sqrt(sobelX ** 2 + sobelZ ** 2)
-#    print(sobel.astype(int))
     print("...done, after %0.3f seconds." % stopwatch())
+    plt.imshow(sobel)
+    plt.show()
+    stopwatch()
 
-    print("Coloring the ground with wool...")
-    for z in range(box.minz, box.maxz):
-        sobelZIndex = z - box.minz
-        for x in range(box.minx, box.maxx):
-            sobelXIndex = x - box.minx
-            y = heightMap[sobelZIndex][sobelXIndex]
-            color = sobel[sobelZIndex][sobelXIndex].astype(int)
-            WOOL_ID = 35
-            CUTOFF = 5
-            if color < CUTOFF:
-                color = 5 # lime
-            elif color > CUTOFF:
-                color = 14 # red
-            elif color == CUTOFF:
-                color = 4 # yellow
-            setBlock(level, (WOOL_ID, color), x, y, z)
+#    print("Color the ground with wool...")
+#    for z in range(box.minz, box.maxz):
+#        sobelZIndex = z - box.minz
+#        for x in range(box.minx, box.maxx):
+#            sobelXIndex = x - box.minx
+#            y = heightMap[sobelZIndex][sobelXIndex]
+#            color = sobel[sobelZIndex][sobelXIndex].astype(int)
+#            WOOL_ID = 35
+#            CUTOFF = 5
+#            if color < CUTOFF:
+#                color = 5 # lime
+#            elif color > CUTOFF:
+#                color = 14 # red
+#            elif color == CUTOFF:
+#                color = 4 # yellow
+#            setBlock(level, (WOOL_ID, color), x, y, z)
+#    print("...done, after %0.3f seconds." % stopwatch())
+
+    print("Create sea water mask...")
+    seaMask = generateSeaMask(level, box)
     print("...done, after %0.3f seconds." % stopwatch())
+    plt.imshow(seaMask)
+    plt.show()
+    stopwatch()
+
+    print("Generate Estimated Cost Of Sailing (ECOS) map...")
+    ECOSMap = generateEstimatedCostOfSailingMap(level, box, heightMap)
+    print("...done, after %0.3f seconds." % stopwatch())
+    plt.imshow(ECOSMap)
+    plt.show()
+    stopwatch()
 
     print("Leifsbudir filter finished.")
+
 
 def setBlock(level, (block, data), x, y, z):
 	level.setBlockAt((int)(x),(int)(y),(int)(z), block)
     	level.setBlockDataAt((int)(x),(int)(y),(int)(z), data)
+
 
 terrainBlocks = [
         1, # stone
@@ -112,6 +139,7 @@ terrainBlocks = [
         212, # frosted ice
         ]
 
+
 def isTerrainBlock(block):
     # return early if air
     if block == 0:
@@ -120,21 +148,63 @@ def isTerrainBlock(block):
     return block in terrainBlocks
 
 
-def terrainHeight(level, x, z, miny, maxy):
-    nonterrainBlocks = []
-    nonterrainBlocks.append(0)
-    for y in xrange(maxy, miny, -1):
-            if isTerrainBlock(level.blockAt(x, y, z)):
+def terrainHeight(chunkSlice, x, z, miny, maxy):
+    for y in range(maxy, miny, -1):
+            if isTerrainBlock(chunkSlice[x][z][y]):
                 return y
     return 0
 
-def terrainHeightMap(level, box):
-    heightMap = []
+
+def generateTerrainHeightMap(level, box):
+    mapXSize = box.maxx - box.minx
+    mapZSize = box.maxz - box.minz
+    heightMap = np.zeros((mapZSize, mapXSize), dtype=int)
+
+    chunkSlices = level.getChunkSlices(box)
+    for (chunk, slices, point) in chunkSlices:
+        chunkSlice = chunk.Blocks[slices]
+        roughHeightMap = chunk.HeightMap.T
+        xOffset = (chunk.chunkPosition[0] << 4) - box.minx
+        zOffset = (chunk.chunkPosition[1] << 4) - box.minz
+        for x in range(0, 16):
+            for z in range(0, 16):
+                y = roughHeightMap[x][z]
+                height = terrainHeight(chunkSlice, x, z, 0, y)
+                heightMap[z + zOffset][x + xOffset] = height
+    return heightMap
+
+
+def generateSeaMask(level, box):
+    seaMask = []
     for z in range(box.minz, box.maxz):
-        column = []
+        row = []
         for x in range(box.minx, box.maxx):
-            column.append(terrainHeight(level, x, z, box.miny, box.maxy))
-        heightMap.append(column)
-    return np.array(heightMap)
+            isWater = False
+            if 9 == level.blockAt(x, SEA_LEVEL, z):
+                isWater = True
+            row.append(isWater)
+        seaMask.append(row)
+    return np.array(seaMask)
+
+
+def generateEstimatedCostOfSailingMap(level, box, heightMap):
+    ECOSMap = []
+    for z in xrange(box.minz + 1, box.maxz - 1):
+        zIndex = z - box.minz
+        row = []
+        for x in xrange(box.minx + 1, box.maxx - 1):
+            xIndex = x - box.minx
+            cost = 1
+            for zInner in range(zIndex - 1, zIndex + 2):
+                for xInner in range(xIndex - 1, xIndex + 2):
+                    height = heightMap[zInner][xInner]
+                    costAtColumn = height - (SEA_LEVEL - 1)
+                    costAtColumn = max(0, costAtColumn)
+                    costAtColumn = min(4, costAtColumn)
+                    cost += costAtColumn
+            row.append(cost)
+        ECOSMap.append(row)
+    return np.array(ECOSMap)
+
 
 
