@@ -46,9 +46,10 @@ def perform(level, box, options):
     # Initiate stopwatch
     stopwatch()
 
-    print("Generate height map...")
+    print("Generate terrain height map...")
     heightMap = generateTerrainHeightMap(level, box)
     print("...done, after %0.3f seconds." % stopwatch())
+    plt.figure("Terrain height map")
     plt.imshow(heightMap)
     plt.show()
     stopwatch()
@@ -58,6 +59,7 @@ def perform(level, box, options):
     sobelZ = ndimage.sobel(heightMap, 0)
     sobel = np.sqrt(sobelX ** 2 + sobelZ ** 2)
     print("...done, after %0.3f seconds." % stopwatch())
+    plt.figure("Terrain gradients (Sobel)")
     plt.imshow(sobel)
     plt.show()
     stopwatch()
@@ -83,6 +85,7 @@ def perform(level, box, options):
     print("Create sea water mask...")
     seaMask = generateSeaMask(level, box)
     print("...done, after %0.3f seconds." % stopwatch())
+    plt.figure("Sea water mask")
     plt.imshow(seaMask)
     plt.show()
     stopwatch()
@@ -90,7 +93,23 @@ def perform(level, box, options):
     print("Generate Estimated Cost Of Sailing (ECOS) map...")
     ECOSMap = generateEstimatedCostOfSailingMap(level, box, heightMap)
     print("...done, after %0.3f seconds." % stopwatch())
+    plt.figure("Estimated Cost Of Sailing (ECOS)")
     plt.imshow(ECOSMap)
+    plt.show()
+    stopwatch()
+
+    print("Label traversable sea regions...")
+    traversableSeaMask = ECOSMap <= 1
+    traversableSeaRegions, count = ndimage.label(traversableSeaMask)
+    sizes = ndimage.sum(traversableSeaMask, traversableSeaRegions, range(count + 1))
+    mask_size = sizes < 250
+    remove_pixel = mask_size[traversableSeaRegions]
+    traversableSeaRegions[remove_pixel] = 0
+    labels = np.unique(traversableSeaRegions)
+    traversableSeaRegions = np.searchsorted(labels, traversableSeaRegions)
+    print("...done, after %0.3f seconds." % stopwatch())
+    plt.figure("Traversable sea regions of a certain size")
+    plt.imshow(traversableSeaRegions)
     plt.show()
     stopwatch()
 
@@ -206,5 +225,26 @@ def generateEstimatedCostOfSailingMap(level, box, heightMap):
         ECOSMap.append(row)
     return np.array(ECOSMap)
 
+# TODO: Find suitable places to dig canals (and tunnels)
+# - Inspiration from distance transform, dijkstra, etc. Find the point
+#   where the distance (weightet for cost) from sea to sea is the shortest,
+#   use the sea tiles closest to the shore on each side as start and
+#   finish points, and calculate cost of travel with and without a
+#   canal / tunnel. If canal/tunnel is cheaper, build it. Then continue
+#   the search. Time out at a predetermined "maximum cost".
+#
+# * Let all regions grow outwards, speed dictated by ECOS.
+# * When region collides with other region:
+#   - Suitable canal point found
+#   - Dig canal there
+#   - Merge regions, including canal area
+# * When region collides with itself:
+#   - Find the two points from where the growth came,
+#     one on each side
+#   - Determine the cost of digging canal/tunnel between the points
+#   - Determine the cost of sailing between the points without digging
+#   - If digging is cheaper than sailing:
+#     - Include canal in region
+# * Decide when to stop: Max cost of canal building, regions left, etc.
 
 
