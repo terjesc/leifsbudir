@@ -97,7 +97,8 @@ def perform(level, box, options):
         stopwatch()
 
     print("Generate Estimated Cost Of Sailing (ECOS) map...")
-    ECOSMap = generateEstimatedCostOfSailingMap(level, box, heightMap)
+    ECOSMap = generateEstimatedCostOfSailingMap(
+            level, box, heightMap, seaMask)
     print("...done, after %0.3f seconds." % stopwatch())
     
     if True:
@@ -216,23 +217,32 @@ def generateSeaMask(level, box):
     return np.array(seaMask)
 
 
-def generateEstimatedCostOfSailingMap(level, box, heightMap):
-    ECOSMap = []
+def generateEstimatedCostOfSailingMap(level, box, heightMap, seaMask):
+    mapXSize = box.maxx - box.minx
+    mapZSize = box.maxz - box.minz
+    MAX_DIG_COST = 5
+    MIN_BRIDGE_COST = 5
+    BASE_COST = 1
+    EDGE_COST = BASE_COST + (5 * MAX_DIG_COST)
+    ECOSMap = np.full((mapZSize, mapXSize), EDGE_COST, dtype=int)
     for z in xrange(box.minz + 1, box.maxz - 1):
         zIndex = z - box.minz
-        row = []
         for x in xrange(box.minx + 1, box.maxx - 1):
             xIndex = x - box.minx
-            cost = 1
-            for zInner in range(zIndex - 1, zIndex + 2):
-                for xInner in range(xIndex - 1, xIndex + 2):
+            cost = BASE_COST
+            for xInner, zInner in ((xIndex, zIndex - 1),
+             (xIndex - 1, zIndex), (xIndex, zIndex), (xIndex + 1, zIndex),
+                                   (xIndex, zIndex + 1)):
                     height = heightMap[zInner][xInner]
                     costAtColumn = height - (SEA_LEVEL - 1)
                     costAtColumn = max(0, costAtColumn)
-                    costAtColumn = min(4, costAtColumn)
+                    costAtColumn = min(MAX_DIG_COST, costAtColumn)
+                    if (height < (SEA_LEVEL)
+                            and False == seaMask[zInner][xInner]):
+                        costAtColumn = SEA_LEVEL - height
+                        costAtColumn = max(MIN_BRIDGE_COST, costAtColumn)
                     cost += costAtColumn
-            row.append(cost)
-        ECOSMap.append(row)
+            ECOSMap[zIndex][xIndex] = cost
     return np.array(ECOSMap)
 
 # TODO: Find suitable places to dig canals (and tunnels)
