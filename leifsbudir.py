@@ -49,20 +49,24 @@ def perform(level, box, options):
     print("Generate terrain height map...")
     heightMap = generateTerrainHeightMap(level, box)
     print("...done, after %0.3f seconds." % stopwatch())
-    plt.figure("Terrain height map")
-    plt.imshow(heightMap)
-    plt.show()
-    stopwatch()
+    
+    if False:
+        plt.figure("Terrain height map")
+        plt.imshow(heightMap)
+        plt.show()
+        stopwatch()
 
     print("Apply Sobel operator...")
     sobelX = ndimage.sobel(heightMap, 1)
     sobelZ = ndimage.sobel(heightMap, 0)
     sobel = np.sqrt(sobelX ** 2 + sobelZ ** 2)
     print("...done, after %0.3f seconds." % stopwatch())
-    plt.figure("Terrain gradients (Sobel)")
-    plt.imshow(sobel)
-    plt.show()
-    stopwatch()
+    
+    if False:
+        plt.figure("Terrain gradients (Sobel)")
+        plt.imshow(sobel)
+        plt.show()
+        stopwatch()
 
 #    print("Color the ground with wool...")
 #    for z in range(box.minz, box.maxz):
@@ -85,18 +89,22 @@ def perform(level, box, options):
     print("Create sea water mask...")
     seaMask = generateSeaMask(level, box)
     print("...done, after %0.3f seconds." % stopwatch())
-    plt.figure("Sea water mask")
-    plt.imshow(seaMask)
-    plt.show()
-    stopwatch()
+    
+    if False:
+        plt.figure("Sea water mask")
+        plt.imshow(seaMask)
+        plt.show()
+        stopwatch()
 
     print("Generate Estimated Cost Of Sailing (ECOS) map...")
     ECOSMap = generateEstimatedCostOfSailingMap(level, box, heightMap)
     print("...done, after %0.3f seconds." % stopwatch())
-    plt.figure("Estimated Cost Of Sailing (ECOS)")
-    plt.imshow(ECOSMap)
-    plt.show()
-    stopwatch()
+    
+    if True:
+        plt.figure("Estimated Cost Of Sailing (ECOS)")
+        plt.imshow(ECOSMap)
+        plt.show()
+        stopwatch()
 
     print("Label traversable sea regions...")
     traversableSeaMask = ECOSMap <= 1
@@ -108,10 +116,12 @@ def perform(level, box, options):
     labels = np.unique(traversableSeaRegions)
     traversableSeaRegions = np.searchsorted(labels, traversableSeaRegions)
     print("...done, after %0.3f seconds." % stopwatch())
-    plt.figure("Traversable sea regions of a certain size")
-    plt.imshow(traversableSeaRegions)
-    plt.show()
-    stopwatch()
+    
+    if True:
+        plt.figure("Traversable sea regions of a certain size")
+        plt.imshow(traversableSeaRegions)
+        plt.show()
+        stopwatch()
 
     print("Leifsbudir filter finished.")
 
