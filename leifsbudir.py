@@ -108,14 +108,7 @@ def perform(level, box, options):
         stopwatch()
 
     print("Label traversable sea regions...")
-    traversableSeaMask = ECOSMap <= 1
-    traversableSeaRegions, count = ndimage.label(traversableSeaMask)
-    sizes = ndimage.sum(traversableSeaMask, traversableSeaRegions, range(count + 1))
-    mask_size = sizes < 250
-    remove_pixel = mask_size[traversableSeaRegions]
-    traversableSeaRegions[remove_pixel] = 0
-    labels = np.unique(traversableSeaRegions)
-    traversableSeaRegions = np.searchsorted(labels, traversableSeaRegions)
+    traversableSeaRegions = generateTraversableSeaRegionsMap(ECOSMap)
     print("...done, after %0.3f seconds." % stopwatch())
     
     if True:
@@ -244,6 +237,19 @@ def generateEstimatedCostOfSailingMap(level, box, heightMap, seaMask):
                     cost += costAtColumn
             ECOSMap[zIndex][xIndex] = cost
     return np.array(ECOSMap)
+
+def generateTraversableSeaRegionsMap(ECOSMap):
+    traversableSeaMask = ECOSMap <= 1
+    traversableSeaRegions, count = ndimage.label(traversableSeaMask)
+    sizes = ndimage.sum(
+            traversableSeaMask, traversableSeaRegions, range(count + 1))
+    sizeMask = sizes < 250
+    removeMask = sizeMask[traversableSeaRegions]
+    traversableSeaRegions[removeMask] = 0
+    labels = np.unique(traversableSeaRegions)
+    traversableSeaRegions = np.searchsorted(labels, traversableSeaRegions)
+    return traversableSeaRegions
+
 
 # TODO: Find suitable places to dig canals (and tunnels)
 # - Inspiration from distance transform, dijkstra, etc. Find the point
