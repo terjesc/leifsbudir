@@ -171,7 +171,7 @@ terrainBlocks = [
 
 def isTerrainBlock(block):
     # return early if air
-    if block == 0:
+    if block == 0 or block == 9:
         return False
     # Time consuming check
     return block in terrainBlocks
