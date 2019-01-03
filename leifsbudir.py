@@ -5,6 +5,7 @@ import pymclevel
 import numpy as np
 from scipy import ndimage
 import matplotlib.pyplot as plt
+import heapq
 
 
 SEA_LEVEL = 62 # FIXME: Read sea level from map instead?
@@ -101,7 +102,7 @@ def perform(level, box, options):
             level, box, heightMap, seaMask)
     print("...done, after %0.3f seconds." % stopwatch())
     
-    if True:
+    if False:
         plt.figure("Estimated Cost Of Sailing (ECOS)")
         plt.imshow(ECOSMap)
         plt.show()
@@ -111,11 +112,32 @@ def perform(level, box, options):
     traversableSeaRegions = generateTraversableSeaRegionsMap(ECOSMap)
     print("...done, after %0.3f seconds." % stopwatch())
     
-    if True:
+    if False:
         plt.figure("Traversable sea regions of a certain size")
         plt.imshow(traversableSeaRegions)
         plt.show()
         stopwatch()
+
+    print("Find canal locations...")
+    canalMap = findCanalLocations(box, traversableSeaRegions, ECOSMap,
+            seaMask)
+    print("...done, after %0.3f seconds." % stopwatch())
+
+    if False:
+#        plt.figure("Canal location debug map")
+#        plt.imshow(canalMap)
+#        plt.colorbar()
+#        plt.show()
+        plt.figure("ECOS map")
+        plt.imshow(ECOSMap)
+        plt.colorbar()
+        plt.show()
+        plt.figure("Sea mask")
+        plt.imshow(seaMask)
+        plt.colorbar()
+        plt.show()
+        stopwatch()
+
 
     print("Leifsbudir filter finished.")
 
@@ -249,6 +271,211 @@ def generateTraversableSeaRegionsMap(ECOSMap):
     labels = np.unique(traversableSeaRegions)
     traversableSeaRegions = np.searchsorted(labels, traversableSeaRegions)
     return traversableSeaRegions
+
+def findCanalLocations(box, regionMap, ECOSMap, seaMask):
+    class Node:
+        UNCLAIMED = 0
+        MARKED = 1
+        ERODING = 2
+        CLAIMED = 3
+        PROPER = 4
+
+        def __init__(self, nodeType = UNCLAIMED, region = None,
+                direction = None, origin = None, cost = None,
+                accumulatedCost = 0, coordinates = (None, None)):
+            self.nodeType = nodeType
+            self.region = region
+            self.direction = direction
+            self.origin = origin
+            self.cost = cost
+            self.accumulatedCost = accumulatedCost
+            self.coordinates = coordinates
+
+        def __str__(self):
+            return str(self.__class__) + ": " + str(self.__dict__)
+
+    directions = ((-1, 0), (1, 0), (0, -1), (0, 1))
+    mapXSize = box.maxx - box.minx
+    mapZSize = box.maxz - box.minz
+    searchMap = [[Node()] * mapXSize for i in range(mapZSize)]
+#    searchMap = np.array(searchMap)
+
+    def initRegions():
+        for z in range(len(regionMap)):
+            for x in range(len(regionMap[z])):
+                region = regionMap[z][x]
+                if region != 0:
+                    node = Node(nodeType = Node.PROPER, region = region,
+                            origin = (x, z), cost = 1,
+                            coordinates = (x, z))
+                    searchMap[z][x] = node
+                else:
+                    node = Node(coordinates = (x, z))
+                    searchMap[z][x] = node
+
+    def convertMarkedToEroding():
+        for z in range(1, len(searchMap) - 1):
+            for x in range(1, len(searchMap[z]) - 1):
+                if searchMap[z][x].nodeType == Node.MARKED:
+                    searchMap[z][x].nodeType = Node.ERODING
+
+    def mergeRegions(regionA, regionB):
+        for z in range(1, len(searchMap) - 1):
+            for x in range(1, len(searchMap[z]) - 1):
+                if searchMap[z][x].region == regionB:
+                    searchMap[z][x].region = regionA
+
+    canalCoordinates = []
+
+    def makeCanal((x, z)):
+        node = searchMap[z][x]
+        while node.nodeType != Node.PROPER:
+            if ECOSMap[z][x] != 1:
+                ECOSMap[z][x] = 1
+                canalCoordinates.append(node.coordinates)
+                seaMask[z][x] = True
+                for xOffset, zOffset in directions:
+                    seaMask[z + zOffset][x + xOffset] = True
+            x = node.coordinates[0] + node.direction[0]
+            z = node.coordinates[1] + node.direction[1]
+            node = searchMap[z][x]
+
+    def travelDistance(travelMask, start, goal, timeout=100):
+        if start == goal:
+            return 0
+
+        def heuristic(pointA, pointB):
+            (aX, aZ) = pointA
+            (bX, bZ) = pointB
+            return abs(bX - aX) + abs(bZ - aZ)
+
+        bestCase = heuristic(start, goal)
+        if 1 == bestCase:
+            return 1
+
+        (startX, startZ) = start
+        (goalX, goalZ) = goal
+
+        if (1 != travelMask[startZ][startX]
+                or 1 != travelMask[goalZ][goalX]):
+            return np.inf
+
+        visitedMask = [[False] * len(travelMask[0])
+                for z in range(len(travelMask))]
+
+        edge = []
+        estimate = bestCase
+        distance = 0
+        coordinates = start
+        heapq.heappush(edge, (estimate, distance, coordinates))
+
+        while len(edge):
+            (estimate, thusFar, (x, z)) = heapq.heappop(edge)
+            if (x, z) == goal:
+                return thusFar
+            if thusFar >= timeout:
+                return timeout
+
+            for (xOffset, zOffset) in directions:
+                xInner = x + xOffset
+                zInner = z + zOffset
+                if (1 == travelMask[zInner][xInner]
+                        and False == visitedMask[zInner][xInner]):
+                    visitedMask[zInner][xInner] = True
+
+                    newThusFar = thusFar + 1
+                    newHeuristic = heuristic((xInner, zInner), goal)
+                    newEstimate = newThusFar + newHeuristic
+
+                    # In practice, leaving out the below if check gives
+                    # equal (mean) performance, although for cases that
+                    # times out the number of visited nodes is halved.
+                    # It looks like having a lot of entries on the heap
+                    # is no issue, and the added if check balances with
+                    # occasionally saved efforts on not visiting nodes.
+                    # Note that for all cases not timing out, the extra
+                    # nodes will never be visited anyway.
+                    if newEstimate <= timeout:
+                        newCoordinates = (xInner, zInner)
+                        heapq.heappush(edge,
+                                (newEstimate,
+                                    newThusFar,
+                                    newCoordinates))
+        return timeout
+
+    def spread(node):
+        x, z = node.coordinates
+
+        for xOffset, zOffset in directions:
+            xOther = x + xOffset
+            zOther = z + zOffset
+            otherNode = searchMap[zOther][xOther]
+
+            if otherNode.nodeType == Node.UNCLAIMED:
+                otherNode.nodeType = Node.MARKED
+                otherNode.region = node.region
+                otherNode.direction = (xOffset * -1, zOffset * -1)
+                otherNode.origin = node.origin
+                otherNode.cost = ECOSMap[zOther][xOther]
+                otherNode.accumulatedCost = node.accumulatedCost
+                searchMap[zOther][xOther] = otherNode
+
+            elif (otherNode.nodeType == Node.CLAIMED
+                    or otherNode.nodeType == Node.PROPER):
+                if otherNode.region == node.region:
+                    # (Possible) canal interior to the region
+                    # Calculate cost vs benefit
+                    BASE_COST = 10
+                    costOfCanal = 2 * (BASE_COST
+                        + node.accumulatedCost
+                        + otherNode.cost
+                        + otherNode.accumulatedCost)
+
+                    #costOfTravel = 0
+                    costOfTravel = travelDistance(
+                            ECOSMap,
+                            node.origin,
+                            otherNode.origin,
+                            costOfCanal + 1)
+                    if costOfTravel > costOfCanal:
+                        makeCanal(node.coordinates)
+                        makeCanal(otherNode.coordinates)
+
+                else:
+                    # Canal connecting two regions
+                    makeCanal(node.coordinates)
+                    makeCanal(otherNode.coordinates)
+                    mergeRegions(node.region, otherNode.region)
+
+    # Initialize regions
+    initRegions()
+
+    # Fist iteration: Spread from proper nodes
+    for x in range(1, mapXSize - 1):
+        for z in range(1, mapZSize - 1):
+            node = searchMap[z][x]
+            if node.nodeType == Node.PROPER:
+                spread(node)
+
+    # Subsequent iterations: Spread from eroded nodes
+    MAX_COST = 250
+
+    for iterationNumber in xrange(MAX_COST):
+        convertMarkedToEroding()
+
+        # Erode (and spread if finished)
+        for x in range(1, mapXSize - 1):
+            for z in range(1, mapZSize - 1):
+                node = searchMap[z][x]
+                if node.nodeType == Node.ERODING:
+                    node.cost -= 1
+                    node.accumulatedCost += 1
+                    if 0 == node.cost:
+                        node.nodeType = Node.CLAIMED
+                        spread(node)
+                    searchMap[z][x] = node
+
+    return canalCoordinates
 
 
 # TODO: Find suitable places to dig canals (and tunnels)
