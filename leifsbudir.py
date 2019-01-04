@@ -39,6 +39,7 @@ stopwatch.time = 0
 
 def perform(level, box, options):
     print("Leifsbudir filter started.")
+    CLOCK_START = time.clock()
 
     np.set_printoptions(precision=3)
 
@@ -112,6 +113,7 @@ def perform(level, box, options):
         stopwatch()
 
 
+    print("Total runtime: %0.1f seconds." % (time.clock() - CLOCK_START))
     print("Leifsbudir filter finished.")
 
 
