@@ -319,10 +319,23 @@ def findCanalLocations(box, regionMap, ECOSMap, seaMask):
 
         bestCase = heuristic(start, goal)
         if 1 == bestCase:
-            return 1
+            return min(1, timeout)
 
         (startX, startZ) = start
         (goalX, goalZ) = goal
+
+        if 2 == bestCase:
+            xDifference = abs(startX - goalX)
+            if 1 == xDifference:
+                if (1 == travelMask[startZ][goalX]
+                        or 1 == travelMask[goalZ][startX]):
+                    return min(2, timeout)
+            elif 0 == xDifference:
+                if 1 == travelMask[(startZ + goalZ)/2][startX]:
+                    return min(2, timeout)
+            elif 2 == xDifference:
+                if 1 == travelMask[startZ][(startX + goalX)/2]:
+                    return min(2, timeout)
 
         if (1 != travelMask[startZ][startX]
                 or 1 != travelMask[goalZ][goalX]):
