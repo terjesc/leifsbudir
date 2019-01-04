@@ -319,30 +319,12 @@ def findCanalLocations(box, regionMap, ECOSMap, seaMask):
 
         bestCase = heuristic(start, goal)
         if 1 == bestCase:
-            return min(1, timeout)
+            return 1
 
         (startX, startZ) = start
         (goalX, goalZ) = goal
 
-        if 2 == bestCase:
-            xDifference = abs(startX - goalX)
-            if 1 == xDifference:
-                if (1 == travelMask[startZ][goalX]
-                        or 1 == travelMask[goalZ][startX]):
-                    return min(2, timeout)
-            elif 0 == xDifference:
-                if 1 == travelMask[(startZ + goalZ)/2][startX]:
-                    return min(2, timeout)
-            elif 2 == xDifference:
-                if 1 == travelMask[startZ][(startX + goalX)/2]:
-                    return min(2, timeout)
-
-        if (1 != travelMask[startZ][startX]
-                or 1 != travelMask[goalZ][goalX]):
-            return np.inf
-
-        visitedMask = [[False] * len(travelMask[0])
-                for z in range(len(travelMask))]
+        visited = set()
 
         edge = []
         estimate = bestCase
@@ -354,28 +336,21 @@ def findCanalLocations(box, regionMap, ECOSMap, seaMask):
             (estimate, thusFar, (x, z)) = heapq.heappop(edge)
             if (x, z) == goal:
                 return thusFar
-            if thusFar >= timeout:
-                return timeout
 
             for (xOffset, zOffset) in directions:
                 xInner = x + xOffset
                 zInner = z + zOffset
                 if (1 == travelMask[zInner][xInner]
-                        and False == visitedMask[zInner][xInner]):
-                    visitedMask[zInner][xInner] = True
+                        and (xInner, zInner) not in visited):
+
+                    visited.add((xInner, zInner))
 
                     newThusFar = thusFar + 1
                     newHeuristic = heuristic((xInner, zInner), goal)
                     newEstimate = newThusFar + newHeuristic
 
-                    # In practice, leaving out the below if check gives
-                    # equal (mean) performance, although for cases that
-                    # times out the number of visited nodes is halved.
-                    # It looks like having a lot of entries on the heap
-                    # is no issue, and the added if check balances with
-                    # occasionally saved efforts on not visiting nodes.
-                    # Note that for all cases not timing out, the extra
-                    # nodes will never be visited anyway.
+                    # Only add nodes to the queue if they can result in
+                    # a path that is shorter than the timeout
                     if newEstimate <= timeout:
                         newCoordinates = (xInner, zInner)
                         heapq.heappush(edge,
