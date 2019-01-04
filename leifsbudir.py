@@ -40,8 +40,6 @@ stopwatch.time = 0
 def perform(level, box, options):
     print("Leifsbudir filter started.")
 
-#print(level.materials.blockWithID(9)) TODO: remove
-
     np.set_printoptions(precision=3)
 
     # Initiate stopwatch
@@ -68,24 +66,6 @@ def perform(level, box, options):
         plt.imshow(sobel)
         plt.show()
         stopwatch()
-
-#    print("Color the ground with wool...")
-#    for z in range(box.minz, box.maxz):
-#        sobelZIndex = z - box.minz
-#        for x in range(box.minx, box.maxx):
-#            sobelXIndex = x - box.minx
-#            y = heightMap[sobelZIndex][sobelXIndex]
-#            color = sobel[sobelZIndex][sobelXIndex].astype(int)
-#            WOOL_ID = 35
-#            CUTOFF = 5
-#            if color < CUTOFF:
-#                color = 5 # lime
-#            elif color > CUTOFF:
-#                color = 14 # red
-#            elif color == CUTOFF:
-#                color = 4 # yellow
-#            setBlock(level, (WOOL_ID, color), x, y, z)
-#    print("...done, after %0.3f seconds." % stopwatch())
 
     print("Create sea water mask...")
     seaMask = generateSeaMask(level, box)
@@ -119,22 +99,15 @@ def perform(level, box, options):
         stopwatch()
 
     print("Find canal locations...")
-    canalMap = findCanalLocations(box, traversableSeaRegions, ECOSMap,
-            seaMask)
+    canalCoordinates = findCanalLocations(box, traversableSeaRegions,
+            ECOSMap, seaMask)
     print("...done, after %0.3f seconds." % stopwatch())
 
     if False:
-#        plt.figure("Canal location debug map")
-#        plt.imshow(canalMap)
-#        plt.colorbar()
-#        plt.show()
-        plt.figure("ECOS map")
-        plt.imshow(ECOSMap)
-        plt.colorbar()
-        plt.show()
-        plt.figure("Sea mask")
-        plt.imshow(seaMask)
-        plt.colorbar()
+        plt.figure("Canals")
+        toPlot = np.array(canalCoordinates)
+        plt.plot(toPlot[:,0], toPlot[:,1], "o")
+        plt.gca().invert_yaxis()
         plt.show()
         stopwatch()
 
@@ -298,7 +271,7 @@ def findCanalLocations(box, regionMap, ECOSMap, seaMask):
     mapXSize = box.maxx - box.minx
     mapZSize = box.maxz - box.minz
     searchMap = [[Node()] * mapXSize for i in range(mapZSize)]
-#    searchMap = np.array(searchMap)
+    canalCoordinates = []
 
     def initRegions():
         for z in range(len(regionMap)):
@@ -324,8 +297,6 @@ def findCanalLocations(box, regionMap, ECOSMap, seaMask):
             for x in range(1, len(searchMap[z]) - 1):
                 if searchMap[z][x].region == regionB:
                     searchMap[z][x].region = regionA
-
-    canalCoordinates = []
 
     def makeCanal((x, z)):
         node = searchMap[z][x]
@@ -476,28 +447,5 @@ def findCanalLocations(box, regionMap, ECOSMap, seaMask):
                     searchMap[z][x] = node
 
     return canalCoordinates
-
-
-# TODO: Find suitable places to dig canals (and tunnels)
-# - Inspiration from distance transform, dijkstra, etc. Find the point
-#   where the distance (weightet for cost) from sea to sea is the shortest,
-#   use the sea tiles closest to the shore on each side as start and
-#   finish points, and calculate cost of travel with and without a
-#   canal / tunnel. If canal/tunnel is cheaper, build it. Then continue
-#   the search. Time out at a predetermined "maximum cost".
-#
-# * Let all regions grow outwards, speed dictated by ECOS.
-# * When region collides with other region:
-#   - Suitable canal point found
-#   - Dig canal there
-#   - Merge regions, including canal area
-# * When region collides with itself:
-#   - Find the two points from where the growth came,
-#     one on each side
-#   - Determine the cost of digging canal/tunnel between the points
-#   - Determine the cost of sailing between the points without digging
-#   - If digging is cheaper than sailing:
-#     - Include canal in region
-# * Decide when to stop: Max cost of canal building, regions left, etc.
 
 
