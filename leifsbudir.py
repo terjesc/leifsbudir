@@ -122,51 +122,46 @@ def setBlock(level, (block, data), x, y, z):
     	level.setBlockDataAt((int)(x),(int)(y),(int)(z), data)
 
 
-terrainBlocks = [
-        1, # stone
-        2, # grass
-        3, # dirt
-        4, # cobblestone
-        7, # bedrock
-        12, # sand
-        13, # gravel
-        14, # gold ore
-        15, # iron ore
-        16, # coal ore
-        35, # wool TODO: remove, used for debug purposes only
-        21, # lapis lazuli ore
-        24, # sandstone
-        44, # slab
-        48, # moss stone
-        49, # obsidian
-        56, # diamond ore
-        60, # farmland
-        73, # redstone ore
-        79, # ice
-        80, # snow
+# This list is not exhaustive, as other "terrain" blocks does
+# exist in the overworld. However, those blocks generate only
+# in the depths (e.g. rare ores) or in so small quantity that
+# counting them leads to significant overhead for practically
+# no gain (e.g. mossy stones, infested blocks.) Chosen blocks
+# are intended to cover 99.9 % of top layer terrain blocks in
+# all biomes.
+remainingTerrainBlocks = [
+        # TODO: Sort list by general prevalence?
+        # 1 - 4: stone, grass, dirt, cobblestone
+        # 12 - 16: sand, gravel, gold ore, iron ore, coal ore
         82, # clay
-        84, # clay
-        97, # monster egg
-        98, # stone bricks
-        119, # mycelium
-        121, # end stone
-        129, # emerald ore
         159, # stained clay
+        172, # hardened clay
+        80, # snow
+        110, # mycelium
         174, # packed ice
-        179, # red sandstone
-        181, # red sandstone double slab
-        208, # path
-        212, # frosted ice
         ]
 
 
 def isTerrainBlock(block):
-    # return early if air
-    if block == 0 or block == 9:
+    # return early if water or air
+    if block == 9 or block == 0:
         return False
-    # Time consuming check
-    return block in terrainBlocks
 
+    # return early if stone (1), grass (2), dirt (3), or cobblestone (4)
+    if block <= 4:
+        return True
+
+    # return early if leaves (18, 161)
+    if block == 18 or block == 161:
+        return False
+
+    # return early if sand (12), or gravel (13),
+    # and if gold (14), iron (15), or coal (16) ore.
+    if block >= 12 and block <= 16:
+        return True
+
+    # Time consuming check
+    return block in remainingTerrainBlocks
 
 def terrainHeight(chunkSlice, x, z, miny, maxy):
     for y in range(maxy, miny, -1):
@@ -188,7 +183,7 @@ def generateTerrainHeightMap(level, box):
         zOffset = (chunk.chunkPosition[1] << 4) - box.minz
         for x in range(0, 16):
             for z in range(0, 16):
-                y = roughHeightMap[x][z]
+                y = roughHeightMap[x][z] - 1
                 height = terrainHeight(chunkSlice, x, z, 0, y)
                 heightMap[z + zOffset][x + xOffset] = height
     return heightMap
