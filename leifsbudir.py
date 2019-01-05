@@ -245,7 +245,6 @@ def generateTraversableSeaRegionsMap(ECOSMap):
 def findCanalLocations(box, regionMap, ECOSMap, seaMask):
     class Node:
         UNCLAIMED = 0
-        MARKED = 1
         ERODING = 2
         CLAIMED = 3
         PROPER = 4
@@ -268,6 +267,7 @@ def findCanalLocations(box, regionMap, ECOSMap, seaMask):
     mapXSize = box.maxx - box.minx
     mapZSize = box.maxz - box.minz
     searchMap = [[Node()] * mapXSize for i in range(mapZSize)]
+    erosionQueue = [] # (accumulatedCostWhenEroded, (x, z))
     canalCoordinates = []
 
     def initRegions():
@@ -282,12 +282,6 @@ def findCanalLocations(box, regionMap, ECOSMap, seaMask):
                 else:
                     node = Node(coordinates = (x, z))
                     searchMap[z][x] = node
-
-    def convertMarkedToEroding():
-        for z in range(1, len(searchMap) - 1):
-            for x in range(1, len(searchMap[z]) - 1):
-                if searchMap[z][x].nodeType == Node.MARKED:
-                    searchMap[z][x].nodeType = Node.ERODING
 
     def mergeRegions(regionA, regionB):
         for z in range(1, len(searchMap) - 1):
@@ -365,16 +359,30 @@ def findCanalLocations(box, regionMap, ECOSMap, seaMask):
         for xOffset, zOffset in directions:
             xOther = x + xOffset
             zOther = z + zOffset
-            otherNode = searchMap[zOther][xOther]
+            if (xOther <= 0 or xOther >= (mapXSize - 1)
+                    or zOther <= 0 or zOther >= (mapZSize - 1)):
+                continue
+            # TODO: Remove above if test and try the below try/except
+            #       pair instead. Need to understand border conditions
+            #       before that, though, as error pops up elsewhere.
+            #       Probably related to border around ECOSMap, region
+            #       map or sea map. Maybe removing some of the tests
+            #       in travelDistance() was a bad idea after all.
+            try:
+                otherNode = searchMap[zOther][xOther]
+            except IndexError:
+                continue
 
             if otherNode.nodeType == Node.UNCLAIMED:
-                otherNode.nodeType = Node.MARKED
+                otherNode.nodeType = Node.ERODING
                 otherNode.region = node.region
                 otherNode.direction = (xOffset * -1, zOffset * -1)
                 otherNode.origin = node.origin
                 otherNode.cost = ECOSMap[zOther][xOther]
                 otherNode.accumulatedCost = node.accumulatedCost
                 searchMap[zOther][xOther] = otherNode
+                priority = otherNode.cost + otherNode.accumulatedCost
+                heapq.heappush(erosionQueue, (priority, (xOther, zOther)))
 
             elif (otherNode.nodeType == Node.CLAIMED
                     or otherNode.nodeType == Node.PROPER):
@@ -387,7 +395,6 @@ def findCanalLocations(box, regionMap, ECOSMap, seaMask):
                         + otherNode.cost
                         + otherNode.accumulatedCost)
 
-                    #costOfTravel = 0
                     costOfTravel = travelDistance(
                             ECOSMap,
                             node.origin,
@@ -415,21 +422,16 @@ def findCanalLocations(box, regionMap, ECOSMap, seaMask):
 
     # Subsequent iterations: Spread from eroded nodes
     MAX_COST = 250
+    while len(erosionQueue):
+        (accumulatedCost, (x, z)) = heapq.heappop(erosionQueue)
+        if accumulatedCost > MAX_COST:
+            break
+        node = searchMap[z][x]
+        node.accumulatedCost = accumulatedCost
+        node.nodeType = Node.CLAIMED
+        spread(node)
+        searchMap[z][x] = node
 
-    for iterationNumber in xrange(MAX_COST):
-        convertMarkedToEroding()
-
-        # Erode (and spread if finished)
-        for x in range(1, mapXSize - 1):
-            for z in range(1, mapZSize - 1):
-                node = searchMap[z][x]
-                if node.nodeType == Node.ERODING:
-                    node.cost -= 1
-                    node.accumulatedCost += 1
-                    if 0 == node.cost:
-                        node.nodeType = Node.CLAIMED
-                        spread(node)
-                    searchMap[z][x] = node
 
     return canalCoordinates
 
