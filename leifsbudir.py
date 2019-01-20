@@ -7,7 +7,6 @@ from scipy import ndimage
 import matplotlib.pyplot as plt
 import heapq
 
-
 SEA_LEVEL = 62 # FIXME: Read sea level from map instead?
 
 
@@ -53,6 +52,7 @@ def perform(level, box, options):
     if False:
         plt.figure("Terrain height map")
         plt.imshow(heightMap)
+        plt.colorbar()
         plt.show()
         stopwatch()
 
@@ -65,6 +65,7 @@ def perform(level, box, options):
     if False:
         plt.figure("Terrain gradients (Sobel)")
         plt.imshow(sobel)
+        plt.colorbar()
         plt.show()
         stopwatch()
 
@@ -75,6 +76,7 @@ def perform(level, box, options):
     if False:
         plt.figure("Sea water mask")
         plt.imshow(seaMask)
+        plt.colorbar()
         plt.show()
         stopwatch()
 
@@ -86,6 +88,7 @@ def perform(level, box, options):
     if False:
         plt.figure("Estimated Cost Of Sailing (ECOS)")
         plt.imshow(ECOSMap)
+        plt.colorbar()
         plt.show()
         stopwatch()
 
@@ -96,6 +99,7 @@ def perform(level, box, options):
     if False:
         plt.figure("Traversable sea regions of a certain size")
         plt.imshow(traversableSeaRegions)
+        plt.colorbar()
         plt.show()
         stopwatch()
 
