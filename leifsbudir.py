@@ -116,6 +116,22 @@ def perform(level, box, options):
         plt.show()
         stopwatch()
 
+    print("Generate map of surface blocks...")
+    surfaceBlocks = findSurfaceBlocks(level, heightMap, box)
+    print("...done, after %0.3f seconds." % stopwatch())
+
+    if True:
+        plt.figure("Surface blocks")
+        plt.imshow(surfaceBlocks[:,:,0])
+        plt.colorbar()
+        plt.show()
+        plt.figure("Surface block data")
+        plt.imshow(surfaceBlocks[:,:,1])
+        plt.colorbar()
+        plt.show()
+        stopwatch()
+#        print(surfaceBlocks)
+
 
     print("Total runtime: %0.1f seconds." % (time.clock() - CLOCK_START))
     print("Leifsbudir filter finished.")
@@ -439,4 +455,14 @@ def findCanalLocations(box, regionMap, ECOSMap, seaMask):
 
     return canalCoordinates
 
+def findSurfaceBlocks(level, heightMap, box):
+    surfaceBlocks = []
+    for z in range(box.minz, box.maxz):
+        row = []
+        for x in range(box.minx, box.maxx):
+            row.append((
+                level.blockAt(x, heightMap[z-box.minz][x-box.minx], z),
+                level.blockDataAt(x, heightMap[z-box.minz][x-box.minx], z)))
+        surfaceBlocks.append(row)
+    return np.array(surfaceBlocks)
 
